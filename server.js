@@ -8,7 +8,9 @@ const os = require('os');
 
 const app = express();
 
-const PORT = process.env.PORT || 3001;
+// --- PRODUCTION SETUP ---
+const PORT = process.env.PORT || 3001; 
+// Use environment variable for frontend URL or fallback to localhost
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(cors({
@@ -17,26 +19,68 @@ app.use(cors({
   credentials: true
 }));
 
+// --- CONFIGURATION ---
+const TEMP_DIR = os.tmpdir();
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+
+// Ensure we handle the upload storage correctly
 const storage = multer.diskStorage({
-  destination: os.tmpdir(), 
+  destination: TEMP_DIR, 
   filename: (req, file, cb) => cb(null, "huff_" + Date.now() + "_" + file.originalname)
 });
 const upload = multer({ storage: storage });
 
+// --- 1. STARTUP CLEANUP FUNCTION (Defined BEFORE usage) ---
+const cleanOldFiles = () => {
+  console.log("🧹 Running Startup Cleanup...");
+
+  // A. Clean System Temp Directory
+  fs.readdir(TEMP_DIR, (err, files) => {
+    if (err) return;
+    files.forEach(file => {
+      // Only verify huffman related files
+      if (file.startsWith('huff_') || file.startsWith('decomp_')) {
+        const filePath = path.join(TEMP_DIR, file);
+        fs.stat(filePath, (err, stats) => {
+          if (err) return;
+          const now = Date.now();
+          const oneHour = 60 * 60 * 1000;
+          // Delete if older than 1 hour
+          if (now - stats.mtimeMs > oneHour) {
+             fs.unlink(filePath, () => {}); 
+          }
+        });
+      }
+    });
+  });
+
+  // B. Nuke the old 'uploads/' folder content if it exists
+  if (fs.existsSync(UPLOADS_DIR)) {
+    fs.readdir(UPLOADS_DIR, (err, files) => {
+      if (err) return;
+      files.forEach(file => {
+        fs.unlink(path.join(UPLOADS_DIR, file), (err) => {
+          if (!err) console.log(`Deleted old file: uploads/${file}`);
+        });
+      });
+    });
+  }
+};
+
+// --- Helper: Clean single file ---
 const cleanupFile = (filePath) => {
   if (fs.existsSync(filePath)) {
     fs.unlink(filePath, (err) => {
       if (err) console.error(`Error deleting ${filePath}:`, err);
-      else console.log(`Cleaned up: ${filePath}`);
     });
   }
 };
 
 const runHuffmanTool = (action, inputPath, outputPath, res) => {
-  const binaryPath = './huffman_tool';
+  const binaryPath = './huffman_tool'; 
 
   execFile(binaryPath, [action, inputPath, outputPath], (error, stdout, stderr) => {
-    
+    // Immediate cleanup of input
     cleanupFile(inputPath);
 
     if (error) {
@@ -50,16 +94,11 @@ const runHuffmanTool = (action, inputPath, outputPath, res) => {
     
     let stats = {};
     if (jsonLine) {
-      try {
-        stats = JSON.parse(jsonLine.replace('JSON_RESULT:', ''));
-      } catch (e) {
-        console.error("JSON Parse error:", e);
-      }
+      try { stats = JSON.parse(jsonLine.replace('JSON_RESULT:', '')); } catch (e) {}
     }
 
-    setTimeout(() => {
-      cleanupFile(outputPath);
-    }, 15 * 60 * 1000); // 15 Minutes
+    // Schedule Output Deletion (15 mins)
+    setTimeout(() => { cleanupFile(outputPath); }, 15 * 60 * 1000);
 
     res.json({
       message: `${action} successful`,
@@ -69,41 +108,35 @@ const runHuffmanTool = (action, inputPath, outputPath, res) => {
   });
 };
 
+// --- ROUTES ---
 
 app.post('/compress', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  
   const inputPath = req.file.path;
   const outputPath = inputPath + ".huff"; 
-
   runHuffmanTool('compress', inputPath, outputPath, res);
 });
 
 app.post('/decompress', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
   const inputPath = req.file.path;
   let outputName = req.file.originalname.replace('.huff', '').replace('.bin', '');
   if (outputName === req.file.originalname) outputName += ".decompressed"; 
-  
-  const outputPath = path.join(os.tmpdir(), "decomp_" + Date.now() + "_" + outputName);
-
+  const outputPath = path.join(TEMP_DIR, "decomp_" + Date.now() + "_" + outputName);
   runHuffmanTool('decompress', inputPath, outputPath, res);
 });
 
 app.get('/download/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
-  const file = path.join(os.tmpdir(), filename);
+  const file = path.join(TEMP_DIR, filename);
 
   if (!fs.existsSync(file)) {
     return res.status(404).json({ error: "File expired or not found" });
   }
-
   res.download(file, (err) => {
     if (err) console.log("Download error:", err);
   });
 });
-
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
