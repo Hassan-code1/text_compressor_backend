@@ -1,0 +1,21 @@
+# Use a lightweight Node.js image (Linux)
+FROM node:18-slim
+
+# 1. Install C++ Compiler (g++) and Make tools
+RUN apt-get update && apt-get install -y g++ make python3
+
+# 2. Set working directory
+WORKDIR /app
+
+# 3. Copy Backend Files
+COPY package*.json ./
+RUN npm install --production
+
+COPY . .
+
+# 4. CRITICAL: Compile C++ Tool on Linux
+# This creates a linux binary named 'huffman_tool' (no .exe)
+RUN g++ -o huffman_tool huffman_advanced.cpp
+
+# 5. Start Server
+CMD ["node", "server.js"]
