@@ -11,10 +11,10 @@ const app = express();
 // --- PRODUCTION SETUP ---
 const PORT = process.env.PORT || 3001; 
 // Use environment variable for frontend URL or fallback to localhost
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL;
 
 app.use(cors({
-  origin: FRONTEND_URL, 
+  origin: process.env.FRONTEND_URL, 
   methods: ["POST", "GET"],
   credentials: true
 }));
