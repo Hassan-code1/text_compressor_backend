@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const { execFile } = require('child_process');
@@ -5,16 +6,17 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const os = require('os');
+const zlib = require('zlib');
 
 const app = express();
 
 // --- PRODUCTION SETUP ---
-const PORT = process.env.PORT || 3001; 
+const PORT = process.env.PORT || 3001;
 // Use environment variable for frontend URL or fallback to localhost
 const FRONTEND_URL = process.env.FRONTEND_URL;
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL, 
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   methods: ["POST", "GET"],
   credentials: true
 }));
@@ -25,7 +27,7 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 // Ensure we handle the upload storage correctly
 const storage = multer.diskStorage({
-  destination: TEMP_DIR, 
+  destination: TEMP_DIR,
   filename: (req, file, cb) => cb(null, "huff_" + Date.now() + "_" + file.originalname)
 });
 const upload = multer({ storage: storage });
@@ -47,7 +49,7 @@ const cleanOldFiles = () => {
           const oneHour = 60 * 60 * 1000;
           // Delete if older than 1 hour
           if (now - stats.mtimeMs > oneHour) {
-             fs.unlink(filePath, () => {}); 
+            fs.unlink(filePath, () => { });
           }
         });
       }
@@ -76,11 +78,10 @@ const cleanupFile = (filePath) => {
   }
 };
 
-const runHuffmanTool = (action, inputPath, outputPath, res) => {
-  const binaryPath = './huffman_tool'; 
+const runHuffmanTool = (action, inputPath, outputPath, res, extraArgs = [], gzipBuf = null) => {
+  const binaryPath = './huffman_tool';
 
-  execFile(binaryPath, [action, inputPath, outputPath], (error, stdout, stderr) => {
-    // Immediate cleanup of input
+  execFile(binaryPath, [action, inputPath, outputPath, ...extraArgs], (error, stdout, stderr) => {
     cleanupFile(inputPath);
 
     if (error) {
@@ -91,13 +92,15 @@ const runHuffmanTool = (action, inputPath, outputPath, res) => {
 
     const lines = stdout.split('\n');
     const jsonLine = lines.find(line => line.startsWith('JSON_RESULT:'));
-    
+
     let stats = {};
     if (jsonLine) {
-      try { stats = JSON.parse(jsonLine.replace('JSON_RESULT:', '')); } catch (e) {}
+      try { stats = JSON.parse(jsonLine.replace('JSON_RESULT:', '')); } catch (e) { }
     }
 
-    // Schedule Output Deletion (15 mins)
+    // Add gzip benchmark size if provided
+    if (gzipBuf !== null) stats.gzipSize = gzipBuf;
+
     setTimeout(() => { cleanupFile(outputPath); }, 15 * 60 * 1000);
 
     res.json({
@@ -113,15 +116,23 @@ const runHuffmanTool = (action, inputPath, outputPath, res) => {
 app.post('/compress', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const inputPath = req.file.path;
-  const outputPath = inputPath + ".huff"; 
-  runHuffmanTool('compress', inputPath, outputPath, res);
+  const outputPath = inputPath + ".huff";
+  const useRle = req.body?.rle === 'true';
+  const extraArgs = useRle ? ['--rle'] : [];
+
+  // Run gzip on the raw input for benchmarking, then launch Huffman
+  const rawBuf = fs.readFileSync(inputPath);
+  zlib.gzip(rawBuf, (err, gzipped) => {
+    const gzipSize = err ? null : gzipped.length;
+    runHuffmanTool('compress', inputPath, outputPath, res, extraArgs, gzipSize);
+  });
 });
 
 app.post('/decompress', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const inputPath = req.file.path;
   let outputName = req.file.originalname.replace('.huff', '').replace('.bin', '');
-  if (outputName === req.file.originalname) outputName += ".decompressed"; 
+  if (outputName === req.file.originalname) outputName += ".decompressed";
   const outputPath = path.join(TEMP_DIR, "decomp_" + Date.now() + "_" + outputName);
   runHuffmanTool('decompress', inputPath, outputPath, res);
 });
@@ -133,8 +144,11 @@ app.get('/download/:filename', (req, res) => {
   if (!fs.existsSync(file)) {
     return res.status(404).json({ error: "File expired or not found" });
   }
-  res.download(file, (err) => {
-    if (err) console.log("Download error:", err);
+  res.download(file, filename, (err) => {
+    if (err) {
+      console.log("Download error:", err);
+      cleanupFile(file);
+    }
   });
 });
 
