@@ -152,6 +152,24 @@ app.get('/download/:filename', (req, res) => {
   });
 });
 
+app.get("/debug", (req, res) => {
+  res.json({
+    host: req.headers.host,
+    origin: req.headers.origin,
+    forwardedFor: req.headers["x-forwarded-for"],
+    forwardedProto: req.headers["x-forwarded-proto"]
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    service: 'huffman-backend',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   cleanOldFiles();

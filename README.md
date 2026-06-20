@@ -18,24 +18,29 @@ The backend exposes a REST API for file uploads, compression, decompression, and
 ## Local Development Setup
 
 1. **Install Dependencies:**
+
    ```bash
    npm install
    ```
 
 2. **Compile the C++ Engine:**
+
    ```bash
    npm run build
    ```
+  
    *(This executes `g++ -std=c++17 huffman_advanced.cpp -o huffman_tool`)*
 
 3. **Configure Environment Variables:**
    Create a `.env` file in the root directory:
+  
    ```env
    PORT=3001
    FRONTEND_URL=http://localhost:5173
    ```
 
 4. **Start the Server:**
+
    ```bash
    npm start
    ```
@@ -43,6 +48,7 @@ The backend exposes a REST API for file uploads, compression, decompression, and
 ## API Documentation
 
 ### 1. Compress File
+
 Compresses a given text file using the Huffman algorithm.
 
 * **Endpoint:** `POST /compress`
@@ -51,6 +57,7 @@ Compresses a given text file using the Huffman algorithm.
   * `file` (Required): The text file to be compressed.
   * `rle` (Optional): Set to `'true'` to enable Run-Length Encoding as a pre-processing step.
 * **Response (Success):** `200 OK`
+
   ```json
   {
     "message": "compress successful",
@@ -64,6 +71,7 @@ Compresses a given text file using the Huffman algorithm.
   ```
 
 ### 2. Decompress File
+
 Decompresses a `.huff` file back to its original text format.
 
 * **Endpoint:** `POST /decompress`
@@ -71,6 +79,7 @@ Decompresses a `.huff` file back to its original text format.
 * **Parameters:**
   * `file` (Required): The `.huff` file to be decompressed.
 * **Response (Success):** `200 OK`
+
   ```json
   {
     "message": "decompress successful",
@@ -82,6 +91,7 @@ Decompresses a `.huff` file back to its original text format.
   ```
 
 ### 3. Download File
+
 Retrieves a processed file. Files expire and are deleted automatically 15 minutes after processing, or via the hourly cleanup job.
 
 * **Endpoint:** `GET /download/:filename`
@@ -91,11 +101,13 @@ Retrieves a processed file. Files expire and are deleted automatically 15 minute
 ## Testing the API (cURL)
 
 **Test Compression:**
+
 ```bash
 curl -X POST -F "file=@sample.txt" http://localhost:3001/compress
 ```
 
 **Test Decompression:**
+
 ```bash
 curl -X POST -F "file=@sample.txt.huff" http://localhost:3001/decompress
 ```
@@ -103,6 +115,7 @@ curl -X POST -F "file=@sample.txt.huff" http://localhost:3001/decompress
 ## Production Deployment
 
 This backend is designed to be deployed on platforms like Render or Heroku.
+
 * **Build Command:** `npm install && npm run build`
 * **Start Command:** `npm start`
 * **Scaling:** Deploy multiple instances of this backend and place them behind the Nginx Load Balancer for high availability.
