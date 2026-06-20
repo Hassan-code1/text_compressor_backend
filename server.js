@@ -10,6 +10,8 @@ const zlib = require('zlib');
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 // --- PRODUCTION SETUP ---
 const PORT = process.env.PORT || 3001;
 // Use environment variable for frontend URL or fallback to localhost
@@ -111,6 +113,19 @@ const runHuffmanTool = (action, inputPath, outputPath, res, extraArgs = [], gzip
   });
 };
 
+//temp route logger
+app.use((req, res, next) => {
+  console.log('--- REQUEST ---');
+  console.log('method:', req.method);
+  console.log('url:', req.originalUrl);
+  console.log('host:', req.headers.host);
+  console.log('origin:', req.headers.origin);
+  console.log('protocol:', req.protocol);
+  console.log('x-forwarded-proto:', req.headers['x-forwarded-proto']);
+  next();
+});
+
+
 // --- ROUTES ---
 
 app.post('/compress', upload.single('file'), (req, res) => {
@@ -152,6 +167,7 @@ app.get('/download/:filename', (req, res) => {
   });
 });
 
+//temp
 app.get("/debug", (req, res) => {
   res.json({
     host: req.headers.host,
@@ -168,6 +184,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
+});
+//temp test
+app.post('/test-post', (req, res) => {
+  res.json({ ok: true });
 });
 
 app.listen(PORT, () => {
